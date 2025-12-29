@@ -11,14 +11,14 @@ The client implements the following workflow:
 3. Extract SignalR connection details from the database
 4. Connect to SignalR hubs for real-time data
 """
+from __future__ import annotations
+from typing import Final
 
 import asyncio
 import base64
-import hashlib
 import io
 import json
 import sqlite3
-import uuid
 import zipfile
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
@@ -29,49 +29,44 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
+# These are the hardcoded keys from the PATH app
+_CONFIG_DECRYPT_KEY: Final = "PVTG16QwdKSbQhjIwSsQdAm0i"
+_KEY_SALT: Final = b"Ivan Medvedev"  # bytes([73, 118, 97, 110, 32, 77, 101, 100, 118, 101, 100, 101, 118])
 
-class PathDecryption:
-    """Handles decryption of PATH configuration data"""
-    
-    # These are the hardcoded keys from the PATH app
-    CONFIG_DECRYPT_KEY = "PVTG16QwdKSbQhjIwSsQdAm0i"
-    KEY_SALT = b"Ivan Medvedev"  # bytes([73, 118, 97, 110, 32, 77, 101, 100, 118, 101, 100, 101, 118])
-    
-    @classmethod
-    def decrypt(cls, cipher_text: str) -> str:
-        """Decrypt base64-encoded AES-encrypted string"""
-        # Decode base64
-        buffer = base64.b64decode(cipher_text.replace(" ", "+"))
-        
-        # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
-        # C# calls GetBytes(32) then GetBytes(16) on the same instance
-        import hashlib
-        
-        def pbkdf2_sha1(password, salt, iterations, dk_len):
-            """PBKDF2 with SHA1 to match C# Rfc2898DeriveBytes"""
-            return hashlib.pbkdf2_hmac('sha1', password, salt, iterations, dk_len)
-        
-        # First call gets 32 bytes for the key
-        key = pbkdf2_sha1(cls.CONFIG_DECRYPT_KEY.encode(), cls.KEY_SALT, 1000, 32)
-        # Second call gets 16 bytes for the IV, but we need to simulate the state
-        # In C# Rfc2898DeriveBytes, sequential calls continue from where the last left off
-        key_and_iv = pbkdf2_sha1(cls.CONFIG_DECRYPT_KEY.encode(), cls.KEY_SALT, 1000, 48)
-        key = key_and_iv[:32]
-        iv = key_and_iv[32:48]
-        
-        # Decrypt
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        decrypted = decryptor.update(buffer) + decryptor.finalize()
-        
-        # Remove PKCS7 padding and decode UTF-16
-        # PKCS7 padding: last byte indicates number of padding bytes
-        padding_length = decrypted[-1]
-        decrypted = decrypted[:-padding_length]
-        
-        # Decode UTF-16LE and clean up any null characters
-        result = decrypted.decode('utf-16le').rstrip('\x00')
-        return result
+def decrypt(cipher_text: str) -> str:
+    """Decrypt base64-encoded AES-encrypted string"""
+    # Decode base64
+    buffer = base64.b64decode(cipher_text.replace(" ", "+"))
+
+    # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
+    # C# calls GetBytes(32) then GetBytes(16) on the same instance
+    import hashlib
+
+    def pbkdf2_sha1(password, salt, iterations, dk_len):
+        """PBKDF2 with SHA1 to match C# Rfc2898DeriveBytes"""
+        return hashlib.pbkdf2_hmac('sha1', password, salt, iterations, dk_len)
+
+    # First call gets 32 bytes for the key
+    key = pbkdf2_sha1(_CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 32)
+    # Second call gets 16 bytes for the IV, but we need to simulate the state
+    # In C# Rfc2898DeriveBytes, sequential calls continue from where the last left off
+    key_and_iv = pbkdf2_sha1(_CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48)
+    key = key_and_iv[:32]
+    iv = key_and_iv[32:48]
+
+    # Decrypt
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+    decrypted = decryptor.update(buffer) + decryptor.finalize()
+
+    # Remove PKCS7 padding and decode UTF-16
+    # PKCS7 padding: last byte indicates number of padding bytes
+    padding_length = decrypted[-1]
+    decrypted = decrypted[:-padding_length]
+
+    # Decode UTF-16LE and clean up any null characters
+    result = decrypted.decode('utf-16le').rstrip('\x00')
+    return result
 
 
 class PathApiClient:
@@ -227,8 +222,8 @@ class PathRealtimeClient:
         print(f"Encrypted token value: {token_value_encrypted[:50]}...")
         
         # Decrypt the values
-        token_broker_url = PathDecryption.decrypt(token_broker_url_encrypted)
-        token_value = PathDecryption.decrypt(token_value_encrypted)
+        token_broker_url = decrypt(token_broker_url_encrypted)
+        token_value = decrypt(token_value_encrypted)
         
         print(f"Decrypted token broker URL: {token_broker_url}")
         print(f"Decrypted token value: {token_value[:20]}...")
