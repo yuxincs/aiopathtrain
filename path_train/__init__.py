@@ -22,6 +22,7 @@ import sqlite3
 import zipfile
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
+import tempfile
 import requests
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -124,10 +125,6 @@ class PathDatabase:
         with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
             db_filename = zf.namelist()[0]  # Should be the .db file
             self.db_data = zf.read(db_filename)
-        
-        # Write database to temporary file and connect
-        import tempfile
-        import os
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
             temp_file.write(self.db_data)
