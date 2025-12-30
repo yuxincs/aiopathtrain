@@ -177,26 +177,12 @@ class PathRealtimeClient:
 
     def __init__(self, initial_checksum: str = "3672A87A4D8E9104E736C3F61023F013"):
         self.api_client = PathApiClient()
-        self.current_checksum = initial_checksum
-        self.database = None
         self.realtime_data = {}
 
-        # Check for database update.
-        new_checksum = self.api_client.check_db_update(self.current_checksum)
-
-        if new_checksum and new_checksum != self.current_checksum:
-            print(f"Database update available: {new_checksum}")
-            # Download new database
-            db_data = self.api_client.download_database(new_checksum)
-            self.database = PathDatabase(db_data)
-            self.current_checksum = new_checksum
-            print("Database updated successfully")
-        else:
-            print("Database is up to date")
-            if not self.database:
-                # Download current database
-                db_data = self.api_client.download_database(self.current_checksum)
-                self.database = PathDatabase(db_data)
+        # Download the database and check for updates.
+        new_checksum = self.api_client.check_db_update(initial_checksum)
+        db_data = self.api_client.download_database(new_checksum or initial_checksum)
+        self.database = PathDatabase(db_data)
 
     def get_signalr_credentials(self) -> tuple:
         """Extract SignalR connection credentials from database"""
