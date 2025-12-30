@@ -23,7 +23,7 @@ import sqlite3
 import tempfile
 import zipfile
 from datetime import datetime, timezone
-from typing import Any, Dict, Final, List, Optional
+from typing import Final
 
 import requests
 from cryptography.hazmat.backends import default_backend
@@ -73,7 +73,7 @@ class PathApiClient:
         self.user_agent = "okhttp/3.12.6"
         self.session = requests.Session()
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get standard headers for API requests"""
         return {
             "apikey": self.api_key,
@@ -82,7 +82,7 @@ class PathApiClient:
             "user-agent": self.user_agent,
         }
 
-    def check_db_update(self, current_checksum: str) -> Optional[str]:
+    def check_db_update(self, current_checksum: str) -> str | None:
         """Check if there's a database update available"""
         url = f"{self.base_url}/Config/Fetch"
         headers = self._get_headers()
@@ -146,7 +146,7 @@ class PathDatabase:
         result = cursor.fetchone()
         return result[0] if result else None
 
-    def get_station_mappings(self) -> Dict[str, str]:
+    def get_station_mappings(self) -> dict[str, str]:
         """Get station name mappings for SignalR"""
         # This would need to be extracted from the database structure
         # For now, using common PATH stations
@@ -232,7 +232,7 @@ class PathRealtimeClient:
 
         return token_broker_url, token_value
 
-    async def _get_signalr_token(self, station: str, direction: str) -> Dict[str, str]:
+    async def _get_signalr_token(self, station: str, direction: str) -> dict[str, str]:
         """Get SignalR access token for a specific station and direction"""
         token_broker_url, token_value = self._get_signalr_credentials()
 
