@@ -42,14 +42,9 @@ def decrypt(cipher_text: str) -> str:
 
     # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
     # C# calls GetBytes(32) then GetBytes(16) on the same instance
-
-    def pbkdf2_sha1(password, salt, iterations, dk_len):
-        """PBKDF2 with SHA1 to match C# Rfc2898DeriveBytes"""
-        return hashlib.pbkdf2_hmac("sha1", password, salt, iterations, dk_len)
-
-    # Get 16 bytes for the IV, but we need to simulate the state
-    # In C# Rfc2898DeriveBytes, sequential calls continue from where the last left off
-    key_and_iv = pbkdf2_sha1(_CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48)
+    key_and_iv = hashlib.pbkdf2_hmac(
+        "sha1", _CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48
+    )
     key = key_and_iv[:32]
     iv = key_and_iv[32:48]
 
