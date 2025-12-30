@@ -32,7 +32,8 @@ from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # These are the hardcoded keys from the PATH app
 _CONFIG_DECRYPT_KEY: Final = "PVTG16QwdKSbQhjIwSsQdAm0i"
-_KEY_SALT: Final = b"Ivan Medvedev"  # bytes([73, 118, 97, 110, 32, 77, 101, 100, 118, 101, 100, 101, 118])
+# bytes([73, 118, 97, 110, 32, 77, 101, 100, 118, 101, 100, 101, 118])
+_KEY_SALT: Final = b"Ivan Medvedev"
 
 
 def decrypt(cipher_text: str) -> str:
@@ -42,9 +43,7 @@ def decrypt(cipher_text: str) -> str:
 
     # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
     # C# calls GetBytes(32) then GetBytes(16) on the same instance
-    key_and_iv = hashlib.pbkdf2_hmac(
-        "sha1", _CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48
-    )
+    key_and_iv = hashlib.pbkdf2_hmac("sha1", _CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48)
     key = key_and_iv[:32]
     iv = key_and_iv[32:48]
 
@@ -185,9 +184,7 @@ class PathRealtimeClient:
             raise RuntimeError("Database not initialized")
 
         # Get encrypted values from database
-        token_broker_url_encrypted = self.database.get_config_value(
-            "rt_TokenBrokerUrl_Prod"
-        )
+        token_broker_url_encrypted = self.database.get_config_value("rt_TokenBrokerUrl_Prod")
         token_value_encrypted = self.database.get_config_value("rt_TokenValue_Prod")
 
         if not token_broker_url_encrypted or not token_value_encrypted:
@@ -293,9 +290,7 @@ class PathRealtimeClient:
                     time_str = "NOW"
                 else:
                     time_str = f"{mins}m {secs}s"
-                print(
-                    f"  🚊 {arrival['headsign']}: {time_str} ({arrival['arrival_message']})"
-                )
+                print(f"  🚊 {arrival['headsign']}: {time_str} ({arrival['arrival_message']})")
             print()  # Add blank line
 
         except Exception as e:
