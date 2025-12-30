@@ -22,6 +22,7 @@ import json
 import sqlite3
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Final
 
@@ -109,63 +110,6 @@ class PathApiClient:
         return response.content
 
 
-class PathDatabase:
-    """Handles PATH SQLite database operations"""
-
-    def __init__(self, db_data: bytes):
-        # Extract database from zip file
-        with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
-            db_filename = zf.namelist()[0]  # Should be the .db file
-            self.db_data = zf.read(db_filename)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_file:
-            temp_file.write(self.db_data)
-            self.temp_db_path = temp_file.name
-
-        self.conn = sqlite3.connect(self.temp_db_path)
-
-    def __del__(self):
-        """Clean up temporary database file"""
-        if hasattr(self, "conn"):
-            self.conn.close()
-        if hasattr(self, "temp_db_path"):
-            import os
-
-            try:
-                os.unlink(self.temp_db_path)
-            except:
-                pass
-
-    def get_config_value(self, key: str) -> str | None:
-        """Get a configuration value from the database"""
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
-            (key,),
-        )
-        result = cursor.fetchone()
-        return result[0] if result else None
-
-    def get_station_mappings(self) -> dict[str, str]:
-        """Get station name mappings for SignalR"""
-        # This would need to be extracted from the database structure
-        # For now, using common PATH stations
-        return {
-            "Newark": "NWK",
-            "Harrison": "HAR",
-            "Journal Square": "JSQ",
-            "Grove Street": "GRV",
-            "Exchange Place": "EXP",
-            "World Trade Center": "WTC",
-            "Christopher Street": "CHR",
-            "9th Street": "09S",
-            "14th Street": "14S",
-            "23rd Street": "23S",
-            "33rd Street": "33S",
-            "Hoboken": "HOB",
-        }
-
-
 class PathRealtimeClient:
     """Main client for PATH real-time data"""
 
@@ -176,7 +120,7 @@ class PathRealtimeClient:
         # Download the database and check for updates.
         new_checksum = self.api_client.check_db_update(initial_checksum)
         db_data = self.api_client.download_database(new_checksum or initial_checksum)
-        self.database = PathDatabase(db_data)
+        self.database_info = _load_info_from_db(db_data)
 
     async def connect_to_station(self, station: str, direction: str = "New York"):
         """Connect to SignalR hub for real-time data for a station"""
@@ -208,43 +152,18 @@ class PathRealtimeClient:
 
         return connection
 
-    def _get_signalr_credentials(self) -> tuple:
-        """Extract SignalR connection credentials from database"""
-        if not self.database:
-            raise RuntimeError("Database not initialized")
-
-        # Get encrypted values from database
-        token_broker_url_encrypted = self.database.get_config_value("rt_TokenBrokerUrl_Prod")
-        token_value_encrypted = self.database.get_config_value("rt_TokenValue_Prod")
-
-        if not token_broker_url_encrypted or not token_value_encrypted:
-            raise RuntimeError("SignalR credentials not found in database")
-
-        print(f"Encrypted token broker URL: {token_broker_url_encrypted[:50]}...")
-        print(f"Encrypted token value: {token_value_encrypted[:50]}...")
-
-        # Decrypt the values
-        token_broker_url = decrypt(token_broker_url_encrypted)
-        token_value = decrypt(token_value_encrypted)
-
-        print(f"Decrypted token broker URL: {token_broker_url}")
-        print(f"Decrypted token value: {token_value[:20]}...")
-
-        return token_broker_url, token_value
-
     async def _get_signalr_token(self, station: str, direction: str) -> dict[str, str]:
         """Get SignalR access token for a specific station and direction"""
-        token_broker_url, token_value = self._get_signalr_credentials()
 
-        # Prepare request
         payload = {"station": station, "direction": direction}
-
         headers = {
-            "Authorization": f"Bearer {token_value}",
+            "Authorization": f"Bearer {self.database_info.token_value}",
             "Content-Type": "application/json",
         }
 
-        response = requests.post(token_broker_url, json=payload, headers=headers)
+        response = requests.post(
+            self.database_info.token_broker_url, json=payload, headers=headers
+        )
         response.raise_for_status()
 
         return response.json()
@@ -301,3 +220,55 @@ class PathRealtimeClient:
                     if len(message) > 1
                     else str(message)
                 )
+
+
+@dataclass(frozen=True)
+class _DatabaseInfo:
+    """Information about the PATH database"""
+
+    token_broker_url: str
+    token_value: str
+    station_mappings: dict[str, str]
+
+
+def _load_info_from_db(db_data: bytes) -> _DatabaseInfo:
+    """Load token broker URL / token / station name mappings etc from the database"""
+
+    # Extract database from zip file.
+    with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
+        db_filename = zf.namelist()[0]  # Should be the .db file
+        db_data = zf.read(db_filename)
+
+    with tempfile.NamedTemporaryFile(suffix=".db") as temp_file:
+        temp_file.write(db_data)
+        temp_file.flush()
+
+        conn = sqlite3.connect(temp_file.name)
+        cursor = conn.cursor()
+
+        def config_value(key: str) -> str:
+            return cursor.execute(
+                "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
+                (key,),
+            ).fetchone()[0]
+
+        token_broker_url = decrypt(config_value("rt_TokenBrokerUrl_Prod"))
+        token_value = decrypt(config_value("rt_TokenValue_Prod"))
+
+    # This would need to be extracted from the database structure. For now, using common PATH stations.
+    mappings = {
+        "Newark": "NWK",
+        "Harrison": "HAR",
+        "Journal Square": "JSQ",
+        "Grove Street": "GRV",
+        "Exchange Place": "EXP",
+        "World Trade Center": "WTC",
+        "Christopher Street": "CHR",
+        "9th Street": "09S",
+        "14th Street": "14S",
+        "23rd Street": "23S",
+        "33rd Street": "33S",
+        "Hoboken": "HOB",
+    }
+
+    return _DatabaseInfo(token_broker_url, token_value, mappings)
