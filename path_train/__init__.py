@@ -142,7 +142,7 @@ class PathDatabase:
             except:
                 pass
 
-    def get_config_value(self, key: str) -> str:
+    def get_config_value(self, key: str) -> str | None:
         """Get a configuration value from the database"""
         cursor = self.conn.cursor()
         cursor.execute(
