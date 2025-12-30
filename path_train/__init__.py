@@ -12,23 +12,21 @@ The client implements the following workflow:
 4. Connect to SignalR hubs for real-time data
 """
 from __future__ import annotations
-from typing import Final
 
 import asyncio
 import base64
 import io
 import json
 import sqlite3
+import tempfile
 import zipfile
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-import tempfile
+from typing import Any, Dict, Final, List, Optional
+
 import requests
-from signalrcore.hub_connection_builder import HubConnectionBuilder
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # These are the hardcoded keys from the PATH app
 _CONFIG_DECRYPT_KEY: Final = "PVTG16QwdKSbQhjIwSsQdAm0i"
