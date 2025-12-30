@@ -181,11 +181,7 @@ class PathRealtimeClient:
         self.database = None
         self.realtime_data = {}
 
-    async def initialize(self):
-        """Initialize the client by downloading the latest database"""
-        print("Checking for database updates...")
-
-        # Check for database update
+        # Check for database update.
         new_checksum = self.api_client.check_db_update(self.current_checksum)
 
         if new_checksum and new_checksum != self.current_checksum:

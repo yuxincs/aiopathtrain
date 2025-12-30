@@ -7,7 +7,6 @@ from path_train import PathRealtimeClient
 
 async def test_live():
     client = PathRealtimeClient()
-    await client.initialize()
     
     print("Testing live PATH data for 30 seconds...")
     
