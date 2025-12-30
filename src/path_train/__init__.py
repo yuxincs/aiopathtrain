@@ -178,53 +178,12 @@ class PathRealtimeClient:
         db_data = self.api_client.download_database(new_checksum or initial_checksum)
         self.database = PathDatabase(db_data)
 
-    def get_signalr_credentials(self) -> tuple:
-        """Extract SignalR connection credentials from database"""
-        if not self.database:
-            raise RuntimeError("Database not initialized")
-
-        # Get encrypted values from database
-        token_broker_url_encrypted = self.database.get_config_value("rt_TokenBrokerUrl_Prod")
-        token_value_encrypted = self.database.get_config_value("rt_TokenValue_Prod")
-
-        if not token_broker_url_encrypted or not token_value_encrypted:
-            raise RuntimeError("SignalR credentials not found in database")
-
-        print(f"Encrypted token broker URL: {token_broker_url_encrypted[:50]}...")
-        print(f"Encrypted token value: {token_value_encrypted[:50]}...")
-
-        # Decrypt the values
-        token_broker_url = decrypt(token_broker_url_encrypted)
-        token_value = decrypt(token_value_encrypted)
-
-        print(f"Decrypted token broker URL: {token_broker_url}")
-        print(f"Decrypted token value: {token_value[:20]}...")
-
-        return token_broker_url, token_value
-
-    async def get_signalr_token(self, station: str, direction: str) -> Dict[str, str]:
-        """Get SignalR access token for a specific station and direction"""
-        token_broker_url, token_value = self.get_signalr_credentials()
-
-        # Prepare request
-        payload = {"station": station, "direction": direction}
-
-        headers = {
-            "Authorization": f"Bearer {token_value}",
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(token_broker_url, json=payload, headers=headers)
-        response.raise_for_status()
-
-        return response.json()
-
     async def connect_to_station(self, station: str, direction: str = "New York"):
         """Connect to SignalR hub for real-time data for a station"""
         print(f"Connecting to {station} ({direction})...")
 
         # Get SignalR token
-        token_info = await self.get_signalr_token(station, direction)
+        token_info = await self._get_signalr_token(station, direction)
 
         # Create SignalR connection
         connection = (
@@ -248,6 +207,47 @@ class PathRealtimeClient:
         print(f"✅ Connected to {station} ({direction})")
 
         return connection
+
+    def _get_signalr_credentials(self) -> tuple:
+        """Extract SignalR connection credentials from database"""
+        if not self.database:
+            raise RuntimeError("Database not initialized")
+
+        # Get encrypted values from database
+        token_broker_url_encrypted = self.database.get_config_value("rt_TokenBrokerUrl_Prod")
+        token_value_encrypted = self.database.get_config_value("rt_TokenValue_Prod")
+
+        if not token_broker_url_encrypted or not token_value_encrypted:
+            raise RuntimeError("SignalR credentials not found in database")
+
+        print(f"Encrypted token broker URL: {token_broker_url_encrypted[:50]}...")
+        print(f"Encrypted token value: {token_value_encrypted[:50]}...")
+
+        # Decrypt the values
+        token_broker_url = decrypt(token_broker_url_encrypted)
+        token_value = decrypt(token_value_encrypted)
+
+        print(f"Decrypted token broker URL: {token_broker_url}")
+        print(f"Decrypted token value: {token_value[:20]}...")
+
+        return token_broker_url, token_value
+
+    async def _get_signalr_token(self, station: str, direction: str) -> Dict[str, str]:
+        """Get SignalR access token for a specific station and direction"""
+        token_broker_url, token_value = self._get_signalr_credentials()
+
+        # Prepare request
+        payload = {"station": station, "direction": direction}
+
+        headers = {
+            "Authorization": f"Bearer {token_value}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(token_broker_url, json=payload, headers=headers)
+        response.raise_for_status()
+
+        return response.json()
 
     def _process_realtime_message(self, station: str, direction: str, message):
         """Process incoming real-time message"""
@@ -301,40 +301,3 @@ class PathRealtimeClient:
                     if len(message) > 1
                     else str(message)
                 )
-
-    def get_station_arrivals(self, station: str) -> List[Dict[str, Any]]:
-        """Get current arrivals for a station (both directions)"""
-        arrivals = []
-
-        for direction in ["ToNY", "ToNJ"]:
-            key = f"{station}_{direction}"
-            if key in self.realtime_data:
-                arrivals.extend(self.realtime_data[key]["arrivals"])
-
-        # Sort by expected arrival time
-        arrivals.sort(key=lambda x: x["expected_arrival"])
-        return arrivals
-
-    async def monitor_station(self, station: str):
-        """Monitor a station for real-time updates"""
-        connections = []
-
-        try:
-            # Connect to both directions
-            for direction in ["New York", "New Jersey"]:
-                conn = await self.connect_to_station(station, direction)
-                connections.append(conn)
-
-            print(f"\n🚉 Monitoring {station} for real-time arrivals...")
-            print("Press Ctrl+C to stop.\n")
-
-            # Keep running - messages will be displayed as they arrive
-            while True:
-                await asyncio.sleep(30)  # Just keep alive, messages come via callbacks
-
-        except KeyboardInterrupt:
-            print("\n🛑 Stopping monitor...")
-        finally:
-            # Close connections
-            for conn in connections:
-                conn.stop()
