@@ -40,32 +40,6 @@ _CONFIG_DECRYPT_KEY: Final = "PVTG16QwdKSbQhjIwSsQdAm0i"
 _KEY_SALT: Final = b"Ivan Medvedev"
 
 
-def decrypt(cipher_text: str) -> str:
-    """Decrypt base64-encoded AES-encrypted string"""
-    # Decode base64
-    buffer = base64.b64decode(cipher_text.replace(" ", "+"))
-
-    # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
-    # C# calls GetBytes(32) then GetBytes(16) on the same instance
-    key_and_iv = hashlib.pbkdf2_hmac("sha1", _CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48)
-    key = key_and_iv[:32]
-    iv = key_and_iv[32:48]
-
-    # Decrypt
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-    decryptor = cipher.decryptor()
-    decrypted = decryptor.update(buffer) + decryptor.finalize()
-
-    # Remove PKCS7 padding and decode UTF-16
-    # PKCS7 padding: last byte indicates number of padding bytes
-    padding_length = decrypted[-1]
-    decrypted = decrypted[:-padding_length]
-
-    # Decode UTF-16LE and clean up any null characters
-    result = decrypted.decode("utf-16le").rstrip("\x00")
-    return result
-
-
 Direction = Literal["New York", "New Jersey"]
 
 
@@ -231,8 +205,8 @@ def _load_info_from_db(db_data: bytes, checksum: str) -> DatabaseInfo:
                 (key,),
             ).fetchone()[0]
 
-        token_broker_url = decrypt(config_value("rt_TokenBrokerUrl_Prod"))
-        token_value = decrypt(config_value("rt_TokenValue_Prod"))
+        token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
+        token_value = _decrypt(config_value("rt_TokenValue_Prod"))
 
     # This would need to be extracted from the database structure. For now, using common PATH stations.
     mappings = {
@@ -251,3 +225,29 @@ def _load_info_from_db(db_data: bytes, checksum: str) -> DatabaseInfo:
     }
 
     return DatabaseInfo(checksum, token_broker_url, token_value, mappings)
+
+
+def _decrypt(cipher_text: str) -> str:
+    """Decrypt base64-encoded AES-encrypted string"""
+    # Decode base64
+    buffer = base64.b64decode(cipher_text.replace(" ", "+"))
+
+    # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
+    # C# calls GetBytes(32) then GetBytes(16) on the same instance
+    key_and_iv = hashlib.pbkdf2_hmac("sha1", _CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48)
+    key = key_and_iv[:32]
+    iv = key_and_iv[32:48]
+
+    # Decrypt
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+    decrypted = decryptor.update(buffer) + decryptor.finalize()
+
+    # Remove PKCS7 padding and decode UTF-16
+    # PKCS7 padding: last byte indicates number of padding bytes
+    padding_length = decrypted[-1]
+    decrypted = decrypted[:-padding_length]
+
+    # Decode UTF-16LE and clean up any null characters
+    result = decrypted.decode("utf-16le").rstrip("\x00")
+    return result
