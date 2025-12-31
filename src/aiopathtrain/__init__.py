@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 PATH Real-Time API Client
 
@@ -33,7 +32,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 _LOGGER = logging.getLogger(__name__)
-
 
 Direction = Literal["New York", "New Jersey"]
 
@@ -133,7 +131,7 @@ class TokenMetadata:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                self.token_broker_url, json=payload, headers=headers, raise_for_status=True
+                    self.token_broker_url, json=payload, headers=headers, raise_for_status=True
             ) as response:
                 return await response.json()
 
