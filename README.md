@@ -10,10 +10,9 @@ amazing reverse-engineering work outlined in this
 
 <details>
   <summary>Why not use https://www.panynj.gov/bin/portauthority/ridepath.json </summary>
-
-I have generally found the data provided by the PATH HTTP API to be inaccurate
-(often off by 2 or 3 minutes), and the live streams to be much more accurate (the dashboards inside
-the stations themselves seem to be using the same data source).
+  
+> I have generally found the data provided by the PATH HTTP API to be inaccurate
+> (often off by 2 or 3 minutes). The live-stream approach used in this repository is much more accurate (errors are usually within seconds).
 </details>
 
 This software is not endorsed nor supported by the Port Authority of New York and New Jersey.
