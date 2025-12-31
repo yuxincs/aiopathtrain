@@ -1,4 +1,4 @@
-from path_train import Direction, PATHRealtimeClient
+from aiopathtrain import Direction, PATHRealtimeClient
 
 
 async def test_path_train():
