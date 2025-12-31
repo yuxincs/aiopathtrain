@@ -127,7 +127,6 @@ class DatabaseInfo:
     checksum: str
     token_broker_url: str
     token_value: str
-    station_mappings: dict[str, str]
 
     async def signalr_token(self, station: str, direction: Direction) -> dict[str, str]:
         """Get SignalR access token for a specific station and direction"""
@@ -202,23 +201,7 @@ def _load_info_from_db(db_data: bytes, checksum: str) -> DatabaseInfo:
             token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
             token_value = _decrypt(config_value("rt_TokenValue_Prod"))
 
-    # This would need to be extracted from the database structure. For now, using common PATH stations.
-    mappings: dict[str, str] = {
-        "Newark": "NWK",
-        "Harrison": "HAR",
-        "Journal Square": "JSQ",
-        "Grove Street": "GRV",
-        "Exchange Place": "EXP",
-        "World Trade Center": "WTC",
-        "Christopher Street": "CHR",
-        "9th Street": "09S",
-        "14th Street": "14S",
-        "23rd Street": "23S",
-        "33rd Street": "33S",
-        "Hoboken": "HOB",
-    }
-
-    return DatabaseInfo(checksum, token_broker_url, token_value, mappings)
+    return DatabaseInfo(checksum, token_broker_url, token_value)
 
 
 def _decrypt(cipher_text: str) -> str:
