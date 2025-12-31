@@ -128,33 +128,6 @@ class DatabaseInfo:
     token_broker_url: str
     token_value: str
 
-    @staticmethod
-    def from_bytes(db_data: bytes, checksum: str) -> DatabaseInfo:
-        """Load token broker URL / token / station name mappings etc. from the database"""
-
-        # Extract database from zip file.
-        with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
-            db_filename = zf.namelist()[0]  # Should be the .db file
-            db_data = zf.read(db_filename)
-
-        with tempfile.NamedTemporaryFile(suffix=".db") as temp_file:
-            temp_file.write(db_data)
-            temp_file.flush()
-
-            with sqlite3.connect(temp_file.name) as conn:
-                cursor = conn.cursor()
-
-                def config_value(key: str) -> str:
-                    return cursor.execute(
-                        "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
-                        (key,),
-                    ).fetchone()[0]
-
-                token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
-                token_value = _decrypt(config_value("rt_TokenValue_Prod"))
-
-        return DatabaseInfo(checksum, token_broker_url, token_value)
-
     async def signalr_token(self, station: str, direction: Direction) -> dict[str, str]:
         """Get SignalR access token for a specific station and direction"""
         payload: dict[str, str] = {"station": station, "direction": direction}
@@ -186,23 +159,45 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
         # Check the current remote database version.
         additional_headers = {"dbchecksum": checksum}
         async with session.get("Config/Fetch", headers=additional_headers) as response:
-            match response.status:
-                case 404:  # No update available.
-                    pass
-                case 200:
-                    checksum = (
-                        (await response.json()).get("Data", {}).get("DbUpdate", {}).get("Checksum")
-                    )
-                case _:
-                    response.raise_for_status()
+            if response.status == 200:
+                data = await response.json()
+                checksum = data.get("Data", {}).get("DbUpdate", {}).get("Checksum")
+            elif response.status != 404:  # 404 means no update is needed.
+                response.raise_for_status()
 
         # If no update is needed.
         if database_info and checksum == database_info.checksum:
             return database_info
 
-        async with session.get("file/clientdb", params={"checksum": checksum}) as response:
-            response.raise_for_status()
-            return DatabaseInfo.from_bytes(await response.read(), checksum)
+        params: dict[str, str] = {"checksum": checksum}
+        async with session.get("file/clientdb", params=params, raise_for_status=True) as response:
+            db_data = await response.read()
+
+    # The database is a zip file containing a single SQLite database.
+    with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
+        db_filename = zf.namelist()[0]  # Should be the .db file
+        db_data = zf.read(db_filename)
+
+    with tempfile.NamedTemporaryFile(suffix=".db") as temp_file:
+        temp_file.write(db_data)
+        temp_file.flush()
+
+        sql_code = (
+            "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?"
+        )
+
+        with sqlite3.connect(temp_file.name) as conn:
+            cursor = conn.cursor()
+
+            def config_value(key: str) -> str:
+                return cursor.execute(sql_code, (key,)).fetchone()[0]
+
+            token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
+            token_value = _decrypt(config_value("rt_TokenValue_Prod"))
+
+    return DatabaseInfo(
+        checksum=checksum, token_broker_url=token_broker_url, token_value=token_value
+    )
 
 
 def _decrypt(cipher_text: str) -> str:
