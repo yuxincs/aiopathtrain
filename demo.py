@@ -1,19 +1,15 @@
-#!/usr/bin/env python3
-"""Test the live PATH feed for a short period"""
-
 import asyncio
 
 from path_train import PATHRealtimeClient
 
 
-async def test_live():
+async def main():
     client = PATHRealtimeClient()
 
-    print("Listening for train messages...")
+    station, direction = "Exchange Place", "New York"
 
-    # Connect to one direction only for testing
-    async for arrival in client.listen("Grove Street", "New York"):
-        # Display the trains
+    print(f"Listening for PATH train arrival messages on {station} (to {direction})...")
+    async for arrival in client.listen(station, direction):
         print(f"📍 {arrival.station} → {arrival.direction}")
         if arrival.seconds_to_arrival == 0:
             time_str = "NOW"
@@ -22,8 +18,8 @@ async def test_live():
             secs = arrival.seconds_to_arrival % 60
             time_str = f"{mins}m {secs}s"
         print(f"  🚊 {arrival.headsign}: {time_str}")
-        print()  # Add blank line
+        print()
 
 
 if __name__ == "__main__":
-    asyncio.run(test_live())
+    asyncio.run(main())
