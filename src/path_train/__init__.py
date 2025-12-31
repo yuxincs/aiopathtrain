@@ -54,11 +54,11 @@ class TrainArrival:
     headsign: str
 
 
-class PathRealtimeClient:
+class PATHRealtimeClient:
     """Main client for PATH real-time data"""
 
     def __init__(self, existing_database_info: DatabaseInfo | None = None):
-        self._database_info = existing_database_info
+        self._database_info: DatabaseInfo | None = existing_database_info
 
     @property
     def database_info(self) -> DatabaseInfo | None:
@@ -128,10 +128,37 @@ class DatabaseInfo:
     token_broker_url: str
     token_value: str
 
+    @staticmethod
+    def from_bytes(db_data: bytes, checksum: str) -> DatabaseInfo:
+        """Load token broker URL / token / station name mappings etc. from the database"""
+
+        # Extract database from zip file.
+        with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
+            db_filename = zf.namelist()[0]  # Should be the .db file
+            db_data = zf.read(db_filename)
+
+        with tempfile.NamedTemporaryFile(suffix=".db") as temp_file:
+            temp_file.write(db_data)
+            temp_file.flush()
+
+            with sqlite3.connect(temp_file.name) as conn:
+                cursor = conn.cursor()
+
+                def config_value(key: str) -> str:
+                    return cursor.execute(
+                        "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
+                        (key,),
+                    ).fetchone()[0]
+
+                token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
+                token_value = _decrypt(config_value("rt_TokenValue_Prod"))
+
+        return DatabaseInfo(checksum, token_broker_url, token_value)
+
     async def signalr_token(self, station: str, direction: Direction) -> dict[str, str]:
         """Get SignalR access token for a specific station and direction"""
-        payload = {"station": station, "direction": direction}
-        headers = {
+        payload: dict[str, str] = {"station": station, "direction": direction}
+        headers: dict[str, str] = {
             "Authorization": f"Bearer {self.token_value}",
             "Content-Type": "application/json",
         }
@@ -154,6 +181,7 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
     }
 
     checksum = database_info.checksum if database_info else "3672A87A4D8E9104E736C3F61023F013"
+
     async with aiohttp.ClientSession(base_url=base_url, headers=headers) as session:
         # Check the current remote database version.
         additional_headers = {"dbchecksum": checksum}
@@ -174,34 +202,7 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
 
         async with session.get("file/clientdb", params={"checksum": checksum}) as response:
             response.raise_for_status()
-            return _load_info_from_db(await response.read(), checksum)
-
-
-def _load_info_from_db(db_data: bytes, checksum: str) -> DatabaseInfo:
-    """Load token broker URL / token / station name mappings etc. from the database"""
-
-    # Extract database from zip file.
-    with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
-        db_filename = zf.namelist()[0]  # Should be the .db file
-        db_data = zf.read(db_filename)
-
-    with tempfile.NamedTemporaryFile(suffix=".db") as temp_file:
-        temp_file.write(db_data)
-        temp_file.flush()
-
-        with sqlite3.connect(temp_file.name) as conn:
-            cursor = conn.cursor()
-
-            def config_value(key: str) -> str:
-                return cursor.execute(
-                    "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
-                    (key,),
-                ).fetchone()[0]
-
-            token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
-            token_value = _decrypt(config_value("rt_TokenValue_Prod"))
-
-    return DatabaseInfo(checksum, token_broker_url, token_value)
+            return DatabaseInfo.from_bytes(await response.read(), checksum)
 
 
 def _decrypt(cipher_text: str) -> str:

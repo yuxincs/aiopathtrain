@@ -3,11 +3,11 @@
 
 import asyncio
 
-from path_train import PathRealtimeClient
+from path_train import PATHRealtimeClient
 
 
 async def test_live():
-    client = PathRealtimeClient()
+    client = PATHRealtimeClient()
 
     print("Listening for train messages...")
 
