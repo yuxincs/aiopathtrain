@@ -57,17 +57,17 @@ class TrainArrival:
 class PATHRealtimeClient:
     """Main client for PATH real-time data"""
 
-    def __init__(self, existing_database_info: DatabaseInfo | None = None):
-        self._database_info: DatabaseInfo | None = existing_database_info
+    def __init__(self, token_metadata: TokenMetadata | None = None):
+        self._token_metadata: TokenMetadata | None = token_metadata
 
     @property
-    def database_info(self) -> DatabaseInfo | None:
-        return self._database_info
+    def token_metadata(self) -> TokenMetadata | None:
+        return self._token_metadata
 
     async def listen(self, station: str, direction: Direction) -> AsyncIterator[TrainArrival]:
         """Connect to SignalR hub for real-time data for a station"""
-        self._database_info = await _refresh_database_info(self._database_info)
-        token_info = await self._database_info.signalr_token(station, direction)
+        self._token_metadata = await fetch_token_metadata(self._token_metadata)
+        token_info = await self._token_metadata.signalr_token(station, direction)
 
         connection = (
             HubConnectionBuilder()
@@ -121,7 +121,7 @@ class PATHRealtimeClient:
 
 
 @dataclass(frozen=True)
-class DatabaseInfo:
+class TokenMetadata:
     """Information about the PATH database"""
 
     checksum: str
@@ -143,8 +143,11 @@ class DatabaseInfo:
                 return await response.json()
 
 
-async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> DatabaseInfo:
-    """Refresh the database info from the PATH API"""
+async def fetch_token_metadata(existing: TokenMetadata | None = None) -> TokenMetadata:
+    """Fetch the token metadata from the PATH backend system.
+
+    If an existing metadata object is provided, it will be checked for updates and only refreshed if needed.
+    """
     base_url = "https://path-mppprod-app.azurewebsites.net/api/v1/"
     headers: dict[str, str] = {
         "apikey": "3CE6A27D-6A58-4CA5-A3ED-CE2EBAEFA166",
@@ -153,7 +156,7 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
         "user-agent": "okhttp/3.12.6",
     }
 
-    checksum = database_info.checksum if database_info else "3672A87A4D8E9104E736C3F61023F013"
+    checksum = existing.checksum if existing else "3672A87A4D8E9104E736C3F61023F013"
 
     async with aiohttp.ClientSession(base_url=base_url, headers=headers) as session:
         # Check the current remote database version.
@@ -166,8 +169,8 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
                 response.raise_for_status()
 
         # If no update is needed.
-        if database_info and checksum == database_info.checksum:
-            return database_info
+        if existing and checksum == existing.checksum:
+            return existing
 
         params: dict[str, str] = {"checksum": checksum}
         async with session.get("file/clientdb", params=params, raise_for_status=True) as response:
@@ -195,7 +198,7 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
             token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
             token_value = _decrypt(config_value("rt_TokenValue_Prod"))
 
-    return DatabaseInfo(
+    return TokenMetadata(
         checksum=checksum, token_broker_url=token_broker_url, token_value=token_value
     )
 
