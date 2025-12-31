@@ -1,4 +1,4 @@
-# Async PATH Train Client
+# Async PATH train client
 
 Asynchronous Python client for the Port Authority Trans-Hudson (PATH) real-time feed. This client
 library reproduces the workflow of the official RidePATH app and subscribes to the live arrival
@@ -16,7 +16,6 @@ I have generally found the data provided by the PATH HTTP API to be inaccurate
 the stations themselves seem to be using the same data source).
 </details>
 
-
 This software is not endorsed nor supported by the Port Authority of New York and New Jersey.
 
 ## Getting started
@@ -27,7 +26,8 @@ Install the package from PyPI:
 $ pip install aiopathtrain
 ```
 
-The main API is `aiopathtrain.PATHRealtimeClient.listen()`, which returns an async iterator over
+The main API is `aiopathtrain.PATHRealtimeClient().listen(station, direction)`, which returns an
+async iterator over
 `Arrival` objects, each representing a train arrival update message for the specified station and
 direction.
 
