@@ -67,8 +67,7 @@ class PathRealtimeClient:
     async def listen(self, station: str, direction: Direction) -> AsyncIterator[TrainArrival]:
         """Connect to SignalR hub for real-time data for a station"""
         self._database_info = await _refresh_database_info(self._database_info)
-
-        token_info = await self._get_signalr_token(station, direction)
+        token_info = await self._database_info.signalr_token(station, direction)
 
         connection = (
             HubConnectionBuilder()
@@ -120,24 +119,6 @@ class PathRealtimeClient:
         finally:
             connection.stop()
 
-    async def _get_signalr_token(self, station: str, direction: str) -> dict[str, str]:
-        """Get SignalR access token for a specific station and direction"""
-
-        payload = {"station": station, "direction": direction}
-        headers = {
-            "Authorization": f"Bearer {self.database_info.token_value}",
-            "Content-Type": "application/json",
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self.database_info.token_broker_url,
-                json=payload,
-                headers=headers,
-                raise_for_status=True,
-            ) as response:
-                return await response.json()
-
 
 @dataclass(frozen=True)
 class DatabaseInfo:
@@ -148,11 +129,25 @@ class DatabaseInfo:
     token_value: str
     station_mappings: dict[str, str]
 
+    async def signalr_token(self, station: str, direction: Direction) -> dict[str, str]:
+        """Get SignalR access token for a specific station and direction"""
+        payload = {"station": station, "direction": direction}
+        headers = {
+            "Authorization": f"Bearer {self.token_value}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                self.token_broker_url, json=payload, headers=headers, raise_for_status=True
+            ) as response:
+                return await response.json()
+
 
 async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> DatabaseInfo:
     """Refresh the database info from the PATH API"""
     base_url = "https://path-mppprod-app.azurewebsites.net/api/v1/"
-    headers = {
+    headers: dict[str, str] = {
         "apikey": "3CE6A27D-6A58-4CA5-A3ED-CE2EBAEFA166",
         "appname": "RidePATH",
         "appversion": "4.3.0",
@@ -164,9 +159,8 @@ async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> D
         # Check the current remote database version.
         additional_headers = {"dbchecksum": checksum}
         async with session.get("Config/Fetch", headers=additional_headers) as response:
-            # No update available.
             match response.status:
-                case 404:
+                case 404:  # No update available.
                     pass
                 case 200:
                     checksum = (
@@ -196,20 +190,20 @@ def _load_info_from_db(db_data: bytes, checksum: str) -> DatabaseInfo:
         temp_file.write(db_data)
         temp_file.flush()
 
-        conn = sqlite3.connect(temp_file.name)
-        cursor = conn.cursor()
+        with sqlite3.connect(temp_file.name) as conn:
+            cursor = conn.cursor()
 
-        def config_value(key: str) -> str:
-            return cursor.execute(
-                "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
-                (key,),
-            ).fetchone()[0]
+            def config_value(key: str) -> str:
+                return cursor.execute(
+                    "SELECT configuration_value FROM tblConfigurationData WHERE configuration_key = ?",
+                    (key,),
+                ).fetchone()[0]
 
-        token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
-        token_value = _decrypt(config_value("rt_TokenValue_Prod"))
+            token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
+            token_value = _decrypt(config_value("rt_TokenValue_Prod"))
 
     # This would need to be extracted from the database structure. For now, using common PATH stations.
-    mappings = {
+    mappings: dict[str, str] = {
         "Newark": "NWK",
         "Harrison": "HAR",
         "Journal Square": "JSQ",
