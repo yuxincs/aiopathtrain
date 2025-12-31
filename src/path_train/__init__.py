@@ -34,11 +34,6 @@ from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 _LOGGER = logging.getLogger(__name__)
 
-# These are the hardcoded keys from the PATH app
-_CONFIG_DECRYPT_KEY: Final = "PVTG16QwdKSbQhjIwSsQdAm0i"
-# bytes([73, 118, 97, 110, 32, 77, 101, 100, 118, 101, 100, 101, 118])
-_KEY_SALT: Final = b"Ivan Medvedev"
-
 
 Direction = Literal["New York", "New Jersey"]
 
@@ -205,12 +200,16 @@ async def fetch_token_metadata(existing: TokenMetadata | None = None) -> TokenMe
 
 def _decrypt(cipher_text: str) -> str:
     """Decrypt base64-encoded AES-encrypted string"""
+    # These are the hardcoded keys from the PATH app
+    config_encryption_key: Final = b"PVTG16QwdKSbQhjIwSsQdAm0i"
+    key_salt: Final = b"Ivan Medvedev"
+
     # Decode base64
     buffer = base64.b64decode(cipher_text.replace(" ", "+"))
 
     # Derive key and IV using PBKDF2 (matching C# Rfc2898DeriveBytes)
     # C# calls GetBytes(32) then GetBytes(16) on the same instance
-    key_and_iv = hashlib.pbkdf2_hmac("sha1", _CONFIG_DECRYPT_KEY.encode(), _KEY_SALT, 1000, 48)
+    key_and_iv = hashlib.pbkdf2_hmac("sha1", config_encryption_key, key_salt, 1000, 48)
     key = key_and_iv[:32]
     iv = key_and_iv[32:48]
 
