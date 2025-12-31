@@ -19,17 +19,20 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import sqlite3
 import tempfile
 import zipfile
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 import aiohttp
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from signalrcore.hub_connection_builder import HubConnectionBuilder
+
+_LOGGER = logging.getLogger(__name__)
 
 # These are the hardcoded keys from the PATH app
 _CONFIG_DECRYPT_KEY: Final = "PVTG16QwdKSbQhjIwSsQdAm0i"
@@ -63,6 +66,20 @@ def decrypt(cipher_text: str) -> str:
     return result
 
 
+Direction = Literal["New York", "New Jersey"]
+
+
+@dataclass(frozen=True)
+class TrainArrival:
+    """Information about a train arriving at a station"""
+
+    station: str
+    direction: Direction
+    seconds_to_arrival: int
+    line_color: str
+    headsign: str
+
+
 class PathRealtimeClient:
     """Main client for PATH real-time data"""
 
@@ -73,9 +90,7 @@ class PathRealtimeClient:
     def database_info(self) -> DatabaseInfo | None:
         return self._database_info
 
-    async def listen(
-        self, station: str, direction: str = "New York"
-    ) -> AsyncIterator[dict[str, str | int]]:
+    async def listen(self, station: str, direction: Direction) -> AsyncIterator[TrainArrival]:
         """Connect to SignalR hub for real-time data for a station"""
         self._database_info = await _refresh_database_info(self._database_info)
 
@@ -93,26 +108,31 @@ class PathRealtimeClient:
         loop = asyncio.get_running_loop()
         queue = asyncio.Queue()
 
-        def on_message(message):
-            # Message comes as a list: [metadata, json_data]
-            if isinstance(message, list) and len(message) >= 2:
-                json_data = message[1]
-            else:
-                json_data = message
+        def on_message(message: list[str]):
+            if len(message) != 2:
+                _LOGGER.warning("unexpected message format: %s", message)
+                return
 
-            data = json.loads(json_data)
+            _, json_data = message
+            data: dict[str, object] = json.loads(json_data)
+            if "messages" not in data:
+                _LOGGER.warning("missing 'messages' field in message: %s", data)
+                return
+
+            messages = data["messages"]
+            if not isinstance(messages, list):
+                _LOGGER.warning("invalid 'messages' field in message: %s", data)
+                return
 
             # Extract train arrival information
-            for msg in data.get("messages", []):
-                arrival = {
-                    "station": station,
-                    "direction": direction,
-                    "headsign": msg.get("headSign"),
-                    "seconds_to_arrival": int(msg.get("secondsToArrival", 0)),
-                    "arrival_message": msg.get("arrivalTimeMessage"),
-                    "line_colors": msg.get("lineColor", "").split(","),
-                    "last_updated": msg.get("lastUpdated"),
-                }
+            for msg in messages:
+                arrival = TrainArrival(
+                    station=station,
+                    direction=direction,
+                    seconds_to_arrival=int(msg["secondsToArrival"]),
+                    line_color=msg["lineColor"],
+                    headsign=msg["headSign"],
+                )
                 loop.call_soon_threadsafe(queue.put_nowait, arrival)
 
         connection.on("SendMessage", on_message)

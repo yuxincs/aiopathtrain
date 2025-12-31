@@ -14,15 +14,14 @@ async def test_live():
     # Connect to one direction only for testing
     async for arrival in client.listen("Grove Street", "New York"):
         # Display the trains
-        station, direction = arrival["station"], arrival["direction"]
-        print(f"📍 {station} → {direction})")
-        mins = arrival["seconds_to_arrival"] // 60
-        secs = arrival["seconds_to_arrival"] % 60
-        if arrival["seconds_to_arrival"] == 0:
+        print(f"📍 {arrival.station} → {arrival.direction}")
+        if arrival.seconds_to_arrival == 0:
             time_str = "NOW"
         else:
+            mins = arrival.seconds_to_arrival // 60
+            secs = arrival.seconds_to_arrival % 60
             time_str = f"{mins}m {secs}s"
-        print(f"  🚊 {arrival['headsign']}: {time_str} ({arrival['arrival_message']})")
+        print(f"  🚊 {arrival.headsign}: {time_str}")
         print()  # Add blank line
 
 
