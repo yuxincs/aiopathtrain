@@ -1,6 +1,6 @@
 import asyncio
 
-from path_train import PATHRealtimeClient, fetch_token_metadata
+from aiopathtrain import PATHRealtimeClient
 
 
 async def main():
@@ -8,7 +8,7 @@ async def main():
     # Or fetch and persist the token metadata for faster initialization (if the metadata is still valid):
     #
     # existing = load_token_metadata_from_storage() or None
-    # token_metadata = await fetch_token_metadata(existing)  # Will automatically refresh the metadata if existing is None or outdated.
+    # token_metadata = await aiopathtrain.fetch_token_metadata(existing)  # Will automatically refresh the metadata if existing is None or outdated.
     # save_token_metadata_to_storage(token_metadata)  # Persist this for future runs.
     #
     # client = PATHRealtimeClient(token_metadata)

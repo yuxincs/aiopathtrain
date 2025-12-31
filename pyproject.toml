@@ -1,5 +1,5 @@
 [project]
-name = "path_train"
+name = "aiopathtrain"
 requires-python = ">=3.11"
 description = "Subscriber-based client library for getting realtime PATH train information"
 dynamic = ["version"]
