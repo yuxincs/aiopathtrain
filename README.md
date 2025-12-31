@@ -4,7 +4,7 @@ Asynchronous Python client for the Port Authority Trans-Hudson (PATH) real-time 
 library reproduces the workflow of the official RidePATH app and subscribes to the live arrival
 streams for any station.
 
-This is a client port of @mrazza's https://github.com/mrazza/path-data based on their
+This is a client port of [mrazza/path-data](https://github.com/mrazza/path-data) based on their
 amazing reverse-engineering work outlined in this
 [blog post](https://medium.com/@mrazza/programmatic-path-real-time-arrival-data-5d0884ae1ad6).
 
