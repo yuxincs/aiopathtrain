@@ -1,5 +1,10 @@
 # Async PATH train client
 
+[![build](https://github.com/yuxincs/aiopathtrain/actions/workflows/build.yaml/badge.svg)](https://github.com/yuxincs/aiopathtrain/actions/workflows/ci.yaml?query=branch%3Amain)
+[![codecov](https://codecov.io/github/yuxincs/aiopathtrain/branch/main/graph/badge.svg)](https://codecov.io/github/yuxincs/aiopathtrain)
+[![PyPI](https://img.shields.io/pypi/v/aiopathtrain)](https://pypi.org/project/aiopathtrain/)
+[![GitHub](https://img.shields.io/github/license/yuxincs/aiopathtrain)](https://github.com/yuxincs/aiopathtrain/blob/main/LICENSE)
+
 Asynchronous Python client for the Port Authority Trans-Hudson (PATH) real-time feed. This client
 library reproduces the workflow of the official RidePATH app and subscribes to the live arrival
 streams for any station.
