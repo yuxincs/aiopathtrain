@@ -22,11 +22,11 @@ import json
 import sqlite3
 import tempfile
 import zipfile
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Final
 
-import requests
+import aiohttp
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from signalrcore.hub_connection_builder import HubConnectionBuilder
@@ -63,73 +63,24 @@ def decrypt(cipher_text: str) -> str:
     return result
 
 
-class PathApiClient:
-    """Client for the PATH RESTful API"""
-
-    def __init__(self):
-        self.base_url = "https://path-mppprod-app.azurewebsites.net/api/v1"
-        self.api_key = "3CE6A27D-6A58-4CA5-A3ED-CE2EBAEFA166"
-        self.app_name = "RidePATH"
-        self.app_version = "4.3.0"
-        self.user_agent = "okhttp/3.12.6"
-        self.session = requests.Session()
-
-    def _get_headers(self) -> dict[str, str]:
-        """Get standard headers for API requests"""
-        return {
-            "apikey": self.api_key,
-            "appname": self.app_name,
-            "appversion": self.app_version,
-            "user-agent": self.user_agent,
-        }
-
-    def check_db_update(self, current_checksum: str) -> str | None:
-        """Check if there's a database update available"""
-        url = f"{self.base_url}/Config/Fetch"
-        headers = self._get_headers()
-        headers["dbchecksum"] = current_checksum
-
-        response = self.session.get(url, headers=headers)
-
-        if response.status_code == 404:
-            return None  # No update available
-        elif response.status_code == 200:
-            data = response.json()
-            return data.get("Data", {}).get("DbUpdate", {}).get("Checksum")
-        else:
-            response.raise_for_status()
-
-    def download_database(self, checksum: str) -> bytes:
-        """Download the PATH database with the given checksum"""
-        url = f"{self.base_url}/file/clientdb"
-        params = {"checksum": checksum}
-        headers = self._get_headers()
-
-        response = self.session.get(url, params=params, headers=headers)
-        response.raise_for_status()
-        return response.content
-
-
 class PathRealtimeClient:
     """Main client for PATH real-time data"""
 
-    def __init__(self, initial_checksum: str = "3672A87A4D8E9104E736C3F61023F013"):
-        self.api_client = PathApiClient()
-        self.realtime_data = {}
+    def __init__(self, existing_database_info: DatabaseInfo | None = None):
+        self._database_info = existing_database_info
 
-        # Download the database and check for updates.
-        new_checksum = self.api_client.check_db_update(initial_checksum)
-        db_data = self.api_client.download_database(new_checksum or initial_checksum)
-        self.database_info = _load_info_from_db(db_data)
+    @property
+    def database_info(self) -> DatabaseInfo | None:
+        return self._database_info
 
-    async def connect_to_station(self, station: str, direction: str = "New York"):
+    async def listen(
+        self, station: str, direction: str = "New York"
+    ) -> AsyncIterator[dict[str, str | int]]:
         """Connect to SignalR hub for real-time data for a station"""
-        print(f"Connecting to {station} ({direction})...")
+        self._database_info = await _refresh_database_info(self._database_info)
 
-        # Get SignalR token
         token_info = await self._get_signalr_token(station, direction)
 
-        # Create SignalR connection
         connection = (
             HubConnectionBuilder()
             .with_url(
@@ -139,38 +90,10 @@ class PathRealtimeClient:
             .build()
         )
 
-        # Set up message handler
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue()
+
         def on_message(message):
-            print(f"\n🚂 Received message for {station} ({direction}):")
-            self._process_realtime_message(station, direction, message)
-
-        connection.on("SendMessage", on_message)
-
-        # Start connection
-        connection.start()
-        print(f"✅ Connected to {station} ({direction})")
-
-        return connection
-
-    async def _get_signalr_token(self, station: str, direction: str) -> dict[str, str]:
-        """Get SignalR access token for a specific station and direction"""
-
-        payload = {"station": station, "direction": direction}
-        headers = {
-            "Authorization": f"Bearer {self.database_info.token_value}",
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(
-            self.database_info.token_broker_url, json=payload, headers=headers
-        )
-        response.raise_for_status()
-
-        return response.json()
-
-    def _process_realtime_message(self, station: str, direction: str, message):
-        """Process incoming real-time message"""
-        try:
             # Message comes as a list: [metadata, json_data]
             if isinstance(message, list) and len(message) >= 2:
                 json_data = message[1]
@@ -180,7 +103,6 @@ class PathRealtimeClient:
             data = json.loads(json_data)
 
             # Extract train arrival information
-            arrivals = []
             for msg in data.get("messages", []):
                 arrival = {
                     "station": station,
@@ -191,48 +113,85 @@ class PathRealtimeClient:
                     "line_colors": msg.get("lineColor", "").split(","),
                     "last_updated": msg.get("lastUpdated"),
                 }
-                arrivals.append(arrival)
+                loop.call_soon_threadsafe(queue.put_nowait, arrival)
 
-            # Store the data
-            key = f"{station}_{direction}"
-            self.realtime_data[key] = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "arrivals": arrivals,
-            }
+        connection.on("SendMessage", on_message)
+        connection.start()
 
-            # Display the trains
-            print(f"📍 {station} → {direction} ({len(arrivals)} trains)")
-            for arrival in arrivals:
-                mins = arrival["seconds_to_arrival"] // 60
-                secs = arrival["seconds_to_arrival"] % 60
-                if arrival["seconds_to_arrival"] == 0:
-                    time_str = "NOW"
-                else:
-                    time_str = f"{mins}m {secs}s"
-                print(f"  🚊 {arrival['headsign']}: {time_str} ({arrival['arrival_message']})")
-            print()  # Add blank line
+        try:
+            while True:
+                yield await queue.get()
+        except asyncio.exceptions.CancelledError:
+            pass
+        finally:
+            connection.stop()
 
-        except Exception as e:
-            print(f"❌ Error processing message for {station} ({direction}): {e}")
-            if isinstance(message, list):
-                print(
-                    f"Raw message (list): {message[1][:200]}..."
-                    if len(message) > 1
-                    else str(message)
-                )
+    async def _get_signalr_token(self, station: str, direction: str) -> dict[str, str]:
+        """Get SignalR access token for a specific station and direction"""
+
+        payload = {"station": station, "direction": direction}
+        headers = {
+            "Authorization": f"Bearer {self.database_info.token_value}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                self.database_info.token_broker_url,
+                json=payload,
+                headers=headers,
+                raise_for_status=True,
+            ) as response:
+                return await response.json()
 
 
 @dataclass(frozen=True)
-class _DatabaseInfo:
+class DatabaseInfo:
     """Information about the PATH database"""
 
+    checksum: str
     token_broker_url: str
     token_value: str
     station_mappings: dict[str, str]
 
 
-def _load_info_from_db(db_data: bytes) -> _DatabaseInfo:
-    """Load token broker URL / token / station name mappings etc from the database"""
+async def _refresh_database_info(database_info: DatabaseInfo | None = None) -> DatabaseInfo:
+    """Refresh the database info from the PATH API"""
+    base_url = "https://path-mppprod-app.azurewebsites.net/api/v1/"
+    headers = {
+        "apikey": "3CE6A27D-6A58-4CA5-A3ED-CE2EBAEFA166",
+        "appname": "RidePATH",
+        "appversion": "4.3.0",
+        "user-agent": "okhttp/3.12.6",
+    }
+
+    checksum = database_info.checksum if database_info else "3672A87A4D8E9104E736C3F61023F013"
+    async with aiohttp.ClientSession(base_url=base_url, headers=headers) as session:
+        # Check the current remote database version.
+        additional_headers = {"dbchecksum": checksum}
+        async with session.get("Config/Fetch", headers=additional_headers) as response:
+            # No update available.
+            match response.status:
+                case 404:
+                    pass
+                case 200:
+                    checksum = (
+                        (await response.json()).get("Data", {}).get("DbUpdate", {}).get("Checksum")
+                    )
+                case _:
+                    response.raise_for_status()
+
+        # If no update is needed.
+        if database_info and checksum == database_info.checksum:
+            return database_info
+
+        async with session.get("file/clientdb", params={"checksum": checksum}) as response:
+            response.raise_for_status()
+            return _load_info_from_db(await response.read(), checksum)
+
+
+def _load_info_from_db(db_data: bytes, checksum: str) -> DatabaseInfo:
+    """Load token broker URL / token / station name mappings etc. from the database"""
 
     # Extract database from zip file.
     with zipfile.ZipFile(io.BytesIO(db_data)) as zf:
@@ -271,4 +230,4 @@ def _load_info_from_db(db_data: bytes) -> _DatabaseInfo:
         "Hoboken": "HOB",
     }
 
-    return _DatabaseInfo(token_broker_url, token_value, mappings)
+    return DatabaseInfo(checksum, token_broker_url, token_value, mappings)

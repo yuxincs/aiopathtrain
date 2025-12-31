@@ -8,12 +8,23 @@ from path_train import PathRealtimeClient
 
 async def test_live():
     client = PathRealtimeClient()
-    
-    print("Testing live PATH data for 30 seconds...")
-    
+
+    print("Listening for train messages...")
+
     # Connect to one direction only for testing
-    conn = await client.connect_to_station("Grove Street", "New York")
-    await asyncio.sleep(300)
+    async for arrival in client.listen("Grove Street", "New York"):
+        # Display the trains
+        station, direction = arrival["station"], arrival["direction"]
+        print(f"📍 {station} → {direction})")
+        mins = arrival["seconds_to_arrival"] // 60
+        secs = arrival["seconds_to_arrival"] % 60
+        if arrival["seconds_to_arrival"] == 0:
+            time_str = "NOW"
+        else:
+            time_str = f"{mins}m {secs}s"
+        print(f"  🚊 {arrival['headsign']}: {time_str} ({arrival['arrival_message']})")
+        print()  # Add blank line
+
 
 if __name__ == "__main__":
     asyncio.run(test_live())

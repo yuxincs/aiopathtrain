@@ -14,7 +14,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "requests",
+    "aiohttp",
     "cryptography",
     "signalrcore",
 ]
