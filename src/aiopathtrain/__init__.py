@@ -50,16 +50,11 @@ class TrainArrival:
 class PATHRealtimeClient:
     """Main client for PATH real-time data"""
 
-    def __init__(self, token_metadata: TokenMetadata | None = None):
-        self._token_metadata: TokenMetadata | None = token_metadata
-
-    @property
-    def token_metadata(self) -> TokenMetadata | None:
-        return self._token_metadata
+    def __init__(self, token_metadata: TokenMetadata):
+        self._token_metadata: TokenMetadata = token_metadata
 
     async def listen(self, station: str, direction: Direction) -> AsyncIterator[TrainArrival]:
         """Connect to SignalR hub for real-time data for a station"""
-        self._token_metadata = await fetch_token_metadata(self._token_metadata)
         token_info = await self._token_metadata.signalr_token(station, direction)
 
         connection = (

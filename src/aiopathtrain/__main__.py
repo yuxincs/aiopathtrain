@@ -1,19 +1,14 @@
 import asyncio
 
-from aiopathtrain import PATHRealtimeClient
+from aiopathtrain import Direction, PATHRealtimeClient, fetch_token_metadata
 
 
 async def main():
-    client = PATHRealtimeClient()
-    # Or fetch and persist the token metadata for faster initialization (if the metadata is still valid):
-    #
-    # existing = load_token_metadata_from_storage() or None
-    # token_metadata = await aiopathtrain.fetch_token_metadata(existing)  # Will automatically refresh the metadata if existing is None or outdated.
-    # save_token_metadata_to_storage(token_metadata)  # Persist this for future runs.
-    #
-    # client = PATHRealtimeClient(token_metadata)
+    token_metadata = await fetch_token_metadata()
+    client = PATHRealtimeClient(token_metadata)
 
-    station, direction = "Exchange Place", "New York"
+    station = "Exchange Place"
+    direction: Direction = "New York"
 
     print(f"👀 Listening for PATH train arrival messages on {station} (to {direction})...\n")
     async for arrival in client.listen(station, direction):

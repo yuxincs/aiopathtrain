@@ -1,8 +1,9 @@
-from aiopathtrain import Direction, PATHRealtimeClient
+from aiopathtrain import Direction, PATHRealtimeClient, fetch_token_metadata
 
 
 async def test_path_train():
-    client = PATHRealtimeClient()
+    token_metadata = await fetch_token_metadata()
+    client = PATHRealtimeClient(token_metadata)
 
     station = "Exchange Place"
     direction: Direction = "New York"

@@ -15,9 +15,10 @@ amazing reverse-engineering work outlined in this
 
 <details>
   <summary>Why not use https://www.panynj.gov/bin/portauthority/ridepath.json </summary>
-  
+
 > I have generally found the data provided by the PATH HTTP API to be inaccurate
-> (often off by 2 or 3 minutes). The live-stream approach used in this repository is much more accurate (errors are usually within seconds).
+> (often off by 2 or 3 minutes). The live-stream approach used in this repository is much more
+> accurate (errors are usually within seconds).
 </details>
 
 This software is not endorsed nor supported by the Port Authority of New York and New Jersey.
@@ -38,18 +39,19 @@ direction.
 ```python
 import asyncio
 
-from aiopathtrain import PATHRealtimeClient
+from aiopathtrain import PATHRealtimeClient, fetch_token_metadata
 
 
 async def main():
-    client = PATHRealtimeClient()
-    # Or fetch and persist the token metadata for faster initialization (if the metadata is still valid):
-    #
-    # existing = load_token_metadata_from_storage() or None
-    # token_metadata = await aiopathtrain.fetch_token_metadata(existing)  # Will automatically refresh the metadata if existing is None or outdated.
-    # save_token_metadata_to_storage(token_metadata)  # Persist this for future runs.
-    #
-    # client = PATHRealtimeClient(token_metadata)
+    token_metadata = await fetch_token_metadata()
+    # Token metadata can be persisted to disk and reused across multiple runs. However, 
+    # fetch_token_metadata() must still be called to refresh the metadata if it's expired.
+    # 
+    # existing_token_metadata = load_token_metadata_from_storage()
+    # token_metadata = await aiopathtrain.fetch_token_metadata(existing_token_metadata)
+    # save_token_metadata_to_storage(token_metadata)
+
+    client = PATHRealtimeClient(token_metadata)
 
     station, direction = "Exchange Place", "New York"
 
