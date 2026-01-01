@@ -54,9 +54,11 @@ class PATHRealtimeClient:
     def __init__(self, token_metadata: TokenMetadata):
         self._token_metadata: TokenMetadata = token_metadata
 
-    async def listen(self, station: str, direction: Direction) -> AsyncIterator[TrainArrival]:
+    async def listen(
+        self, station: str, direction: Direction, *, session: aiohttp.ClientSession | None = None
+    ) -> AsyncIterator[TrainArrival]:
         """Connect to SignalR hub for real-time data for a station"""
-        token_info = await self._token_metadata.signalr_token(station, direction)
+        token_info = await self._token_metadata.signalr_token(station, direction, session=session)
 
         connection = (
             HubConnectionBuilder()
@@ -117,7 +119,9 @@ class TokenMetadata:
     token_broker_url: str
     token_value: str
 
-    async def signalr_token(self, station: str, direction: Direction) -> dict[str, str]:
+    async def signalr_token(
+        self, station: str, direction: Direction, *, session: aiohttp.ClientSession | None = None
+    ) -> dict[str, str]:
         """Get SignalR access token for a specific station and direction"""
         payload: dict[str, str] = {"station": station, "direction": direction}
         headers: dict[str, str] = {
@@ -125,7 +129,11 @@ class TokenMetadata:
             "Content-Type": "application/json",
         }
 
-        async with aiohttp.ClientSession() as session:
+        async with AsyncExitStack() as stack:
+            if not session:
+                session = aiohttp.ClientSession()
+                await stack.enter_async_context(session)
+
             async with session.post(
                 self.token_broker_url, json=payload, headers=headers, raise_for_status=True
             ) as response:
@@ -133,9 +141,7 @@ class TokenMetadata:
 
 
 async def fetch_token_metadata(
-    existing: TokenMetadata | None = None,
-    *,
-    session: aiohttp.ClientSession | None = None,
+    existing: TokenMetadata | None = None, *, session: aiohttp.ClientSession | None = None
 ) -> TokenMetadata:
     """Fetch the token metadata from the PATH backend system.
 
