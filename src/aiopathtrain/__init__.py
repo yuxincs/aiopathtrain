@@ -23,6 +23,7 @@ import sqlite3
 import tempfile
 import zipfile
 from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -126,12 +127,16 @@ class TokenMetadata:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                    self.token_broker_url, json=payload, headers=headers, raise_for_status=True
+                self.token_broker_url, json=payload, headers=headers, raise_for_status=True
             ) as response:
                 return await response.json()
 
 
-async def fetch_token_metadata(existing: TokenMetadata | None = None) -> TokenMetadata:
+async def fetch_token_metadata(
+    existing: TokenMetadata | None = None,
+    *,
+    session: aiohttp.ClientSession | None = None,
+) -> TokenMetadata:
     """Fetch the token metadata from the PATH backend system.
 
     If an existing metadata object is provided, it will be checked for updates and only refreshed if needed.
@@ -146,7 +151,11 @@ async def fetch_token_metadata(existing: TokenMetadata | None = None) -> TokenMe
 
     checksum = existing.checksum if existing else "3672A87A4D8E9104E736C3F61023F013"
 
-    async with aiohttp.ClientSession(base_url=base_url, headers=headers) as session:
+    async with AsyncExitStack() as stack:
+        if not session:
+            session = aiohttp.ClientSession(base_url=base_url, headers=headers)
+            await stack.enter_async_context(session)
+
         # Check the current remote database version.
         additional_headers = {"dbchecksum": checksum}
         async with session.get("Config/Fetch", headers=additional_headers) as response:
