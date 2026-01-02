@@ -193,10 +193,9 @@ async def fetch_token_metadata(
         )
 
         with sqlite3.connect(temp_file.name) as conn:
-            cursor = conn.cursor()
 
             def config_value(key: str) -> str:
-                return cursor.execute(sql_code, (key,)).fetchone()[0]
+                return conn.execute(sql_code, (key,)).fetchone()[0]
 
             token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
             token_value = _decrypt(config_value("rt_TokenValue_Prod"))
