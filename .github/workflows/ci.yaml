@@ -21,7 +21,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: j178/prek-action@v1
+      - name: Prek lint
+        run: uv run --frozen --extra dev -- prek run --all-files
 
       - name: Test with python ${{ matrix.python-version }}
         run: uv run --frozen --extra dev -- pytest --cov=./ --cov-report=xml
