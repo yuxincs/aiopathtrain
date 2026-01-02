@@ -8,7 +8,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  build-lint-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -20,6 +20,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
+
+      - uses: j178/prek-action@v1
 
       - name: Test with python ${{ matrix.python-version }}
         run: uv run --frozen --extra dev -- pytest --cov=./ --cov-report=xml
