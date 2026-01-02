@@ -22,10 +22,11 @@ import logging
 import sqlite3
 import tempfile
 import zipfile
+from asyncio import Queue
 from collections.abc import AsyncIterator
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, TypedDict, cast
 
 import aiohttp
 from cryptography.hazmat.backends import default_backend
@@ -48,6 +49,10 @@ class TrainArrival:
     headsign: str
 
 
+class _MessageData(TypedDict):
+    messages: list[dict[str, str]]
+
+
 class PATHRealtimeClient:
     """Main client for PATH real-time data"""
 
@@ -66,27 +71,15 @@ class PATHRealtimeClient:
         headers = {"Authorization": f"Bearer {access_token}"}
         client = SignalRClient(url, access_token_factory=lambda: access_token, headers=headers)
 
-        queue = asyncio.Queue()
+        queue: Queue[TrainArrival] = Queue()
 
         async def on_message(message: list[str]):
-            if len(message) != 2:
-                _LOGGER.warning("unexpected message format: %s", message)
-                return
-
             # Each message is in this format: [metadata, json_string].
             _, json_data = message
-            data: dict[str, object] = json.loads(json_data)
-            if "messages" not in data:
-                _LOGGER.warning("missing 'messages' field in message: %s", data)
-                return
-
-            messages = data["messages"]
-            if not isinstance(messages, list):
-                _LOGGER.warning("invalid 'messages' field in message: %s", data)
-                return
+            data = cast(_MessageData, json.loads(json_data))
 
             # Extract train arrival information
-            for msg in messages:
+            for msg in data["messages"]:
                 arrival = TrainArrival(
                     station=station,
                     direction=direction,
@@ -134,7 +127,7 @@ class TokenMetadata:
             async with session.post(
                 self.token_broker_url, json=payload, headers=headers, raise_for_status=True
             ) as response:
-                return await response.json()
+                return cast(dict[str, str], await response.json())
 
 
 async def fetch_token_metadata(
@@ -163,8 +156,10 @@ async def fetch_token_metadata(
         additional_headers = {"dbchecksum": checksum}
         async with session.get("Config/Fetch", headers=additional_headers) as response:
             if response.status == 200:
-                data = await response.json()
+                data = cast(dict[str, dict[str, dict[str, str]]], await response.json())
                 checksum = data.get("Data", {}).get("DbUpdate", {}).get("Checksum")
+                if not checksum:
+                    raise RuntimeError(f"No checksum returned from PATH backend: {data}")
             elif response.status != 404:  # 404 means no update is needed.
                 response.raise_for_status()
 
@@ -192,7 +187,7 @@ async def fetch_token_metadata(
         with sqlite3.connect(temp_file.name) as conn:
 
             def config_value(key: str) -> str:
-                return conn.execute(sql_code, (key,)).fetchone()[0]
+                return cast(str, conn.execute(sql_code, (key,)).fetchone()[0])
 
             token_broker_url = _decrypt(config_value("rt_TokenBrokerUrl_Prod"))
             token_value = _decrypt(config_value("rt_TokenValue_Prod"))
