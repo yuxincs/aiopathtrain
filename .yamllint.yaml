@@ -6,9 +6,8 @@ rules:
 
   # Disable checks for truthy values since yamllint reports errors on "on" keywords in GitHub
   # Actions configuration files (since in YAML 1.1 "on" is a boolean). We can remove this once
-  # yamllint defaults to YAML 1.2 or provides options to specify that.
+  # yamllint defaults to YAML 1.2 or provide options to specify that.
   truthy: disable
 
-  # This requires all YAML files begin with "---", which in practice is rarely needed.
+  # This requires all YAML files to begin with "---", which in practice is rarely needed.
   document-start: disable
-
