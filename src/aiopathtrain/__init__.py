@@ -99,14 +99,13 @@ class PATHRealtimeClient:
         client.on("SendMessage", on_message)
         task = asyncio.create_task(client.run())
 
-        try:
-            while True:
-                yield await queue.get()
-        except asyncio.exceptions.CancelledError:
-            pass
-        finally:
-            task.cancel()
-            await task
+        with suppress(asyncio.CancelledError):
+            try:
+                while True:
+                    yield await queue.get()
+            finally:
+                task.cancel()
+                await task
 
 
 @dataclass(frozen=True)
