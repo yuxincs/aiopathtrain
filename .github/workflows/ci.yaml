@@ -29,7 +29,7 @@ jobs:
           key: >
             prek-v1|
             ${{ runner.os }}|${{ runner.arch }}|${{ matrix.python-version }}|
-            ${{ hashFiles(format('{0}/**/.pre-commit-config.yaml', inputs.working-directory)) }}
+            ${{ hashFiles('**/.pre-commit-config.yaml') }}
 
       - name: Prek lint
         run: |
