@@ -16,7 +16,7 @@ classifiers = [
 dependencies = [
     "aiohttp",
     "cryptography",
-    "signalrcore",
+    "pysignalr",
 ]
 
 [project.optional-dependencies]

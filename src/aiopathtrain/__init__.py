@@ -30,7 +30,7 @@ from typing import Final, Literal
 import aiohttp
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from signalrcore.hub_connection_builder import HubConnectionBuilder
+from pysignalr.client import SignalRClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,23 +60,20 @@ class PATHRealtimeClient:
         """Connect to SignalR hub for real-time data for a station"""
         token_info = await self._token_metadata.signalr_token(station, direction, session=session)
 
-        connection = (
-            HubConnectionBuilder()
-            .with_url(
-                token_info["Url"],
-                options={"access_token_factory": lambda: token_info["AccessToken"]},
-            )
-            .build()
-        )
+        url, access_token = token_info["Url"], token_info["AccessToken"]
+        # The PATH SignalR hub requires the access token to be set even during the "negotiate" stage,
+        # so here we set the token in the headers, in addition to the access_token_factory.
+        headers = {"Authorization": f"Bearer {access_token}"}
+        client = SignalRClient(url, access_token_factory=lambda: access_token, headers=headers)
 
-        loop = asyncio.get_running_loop()
         queue = asyncio.Queue()
 
-        def on_message(message: list[str]):
+        async def on_message(message: list[str]):
             if len(message) != 2:
                 _LOGGER.warning("unexpected message format: %s", message)
                 return
 
+            # Each message is in this format: [metadata, json_string].
             _, json_data = message
             data: dict[str, object] = json.loads(json_data)
             if "messages" not in data:
@@ -97,10 +94,10 @@ class PATHRealtimeClient:
                     line_color=msg["lineColor"],
                     headsign=msg["headSign"],
                 )
-                loop.call_soon_threadsafe(queue.put_nowait, arrival)
+                queue.put_nowait(arrival)
 
-        connection.on("SendMessage", on_message)
-        connection.start()
+        client.on("SendMessage", on_message)
+        task = asyncio.create_task(client.run())
 
         try:
             while True:
@@ -108,7 +105,8 @@ class PATHRealtimeClient:
         except asyncio.exceptions.CancelledError:
             pass
         finally:
-            connection.stop()
+            task.cancel()
+            await task
 
 
 @dataclass(frozen=True)
