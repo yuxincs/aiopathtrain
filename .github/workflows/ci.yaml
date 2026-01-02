@@ -26,10 +26,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/prek
-          key: prek-v1|${{ runner.os }}|${{ runner.arch }}|${{ matrix.python-version }}|${{ hashFiles(format('{0}/**/.pre-commit-config.yaml', inputs.working-directory)) }}
+          key: >
+            prek-v1|
+            ${{ runner.os }}|${{ runner.arch }}|${{ matrix.python-version }}|
+            ${{ hashFiles(format('{0}/**/.pre-commit-config.yaml', inputs.working-directory)) }}
 
       - name: Prek lint
-        run: uv run --frozen --extra dev -- prek run --all-files --show-diff-on-failure --color=always
+        run: |
+          uv run --frozen --extra dev -- prek run --all-files --show-diff-on-failure --color=always
 
       - name: Test with python ${{ matrix.python-version }}
         run: uv run --frozen --extra dev -- pytest --cov=./ --cov-report=xml
