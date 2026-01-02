@@ -44,9 +44,9 @@ from aiopathtrain import PATHRealtimeClient, fetch_token_metadata
 
 async def main():
     token_metadata = await fetch_token_metadata()
-    # Token metadata can be persisted to disk and reused across multiple runs. However, 
+    # Token metadata can be persisted to disk and reused across multiple runs. However,
     # fetch_token_metadata() must still be called to refresh the metadata if it's expired.
-    # 
+    #
     # existing_token_metadata = load_token_metadata_from_storage()
     # token_metadata = await aiopathtrain.fetch_token_metadata(existing_token_metadata)
     # save_token_metadata_to_storage(token_metadata)
