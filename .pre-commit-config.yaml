@@ -9,11 +9,9 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.10
     hooks:
-      - id: ruff
-        args:
-          - --fix
+      - id: ruff-check
+        args: [--fix]
       - id: ruff-format
-        files: ^.*\.py$
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.21.2
     hooks:
