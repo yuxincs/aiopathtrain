@@ -24,7 +24,7 @@ import tempfile
 import zipfile
 from asyncio import Queue
 from collections.abc import AsyncIterator
-from contextlib import AsyncExitStack, suppress
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Final, Literal, TypedDict, cast
 
@@ -65,40 +65,39 @@ class PATHRealtimeClient:
         """Connect to SignalR hub for real-time data for a station"""
         token_info = await self._token_metadata.signalr_token(station, direction, session=session)
 
+        message_queue: Queue[list[str]] = Queue()
+
         url, access_token = token_info["Url"], token_info["AccessToken"]
         # The PATH SignalR hub requires the access token to be set even during the "negotiate" stage,
         # so here we set the token in the headers, in addition to the access_token_factory.
         headers = {"Authorization": f"Bearer {access_token}"}
         client = SignalRClient(url, access_token_factory=lambda: access_token, headers=headers)
+        client.on("SendMessage", message_queue.put)
 
-        queue: Queue[TrainArrival] = Queue()
-
-        async def on_message(message: list[str]):
-            # Each message is in this format: [metadata, json_string].
-            _, json_data = message
-            data = cast(_MessageData, json.loads(json_data))
-
-            # Extract train arrival information
-            for msg in data["messages"]:
-                arrival = TrainArrival(
-                    station=station,
-                    direction=direction,
-                    seconds_to_arrival=int(msg["secondsToArrival"]),
-                    line_color=msg["lineColor"],
-                    headsign=msg["headSign"],
-                )
-                queue.put_nowait(arrival)
-
-        client.on("SendMessage", on_message)
+        # Now, start the client in the _background_, the messages will be pushed to the queue,
+        # and we will be reading the queue here in the main thread.
         task = asyncio.create_task(client.run())
 
-        with suppress(asyncio.CancelledError):
-            try:
-                while True:
-                    yield await queue.get()
-            finally:
-                task.cancel()
-                await task
+        try:
+            while True:
+                message = await message_queue.get()
+
+                # Each message is in this format: [metadata, json_string].
+                _, json_data = message
+                data = cast(_MessageData, json.loads(json_data))
+
+                for msg in data["messages"]:
+                    yield TrainArrival(
+                        station=station,
+                        direction=direction,
+                        seconds_to_arrival=int(msg["secondsToArrival"]),
+                        line_color=msg["lineColor"],
+                        headsign=msg["headSign"],
+                    )
+        finally:
+            # Always make sure to stop the client when we are done.
+            task.cancel()
+            await task
 
 
 @dataclass(frozen=True)
